@@ -33,12 +33,11 @@ func main() {
 	processors := rpcclient.NewRegistry(cfg.Processors)
 	jobService := service.NewJobService(repo, store, publisher, processors)
 
-	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux, jobService)
+	router := handler.NewRouter(jobService)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           middleware.RequestID(middleware.Recover(mux)),
+		Handler:           middleware.RequestID(middleware.Recover(router)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
