@@ -17,6 +17,8 @@ queue:
   provider: nats
   url: nats://nats:4222
   stream: convert_jobs
+  subject: jobs.created
+  consumer: convert-worker
 
 processors:
   pdf:

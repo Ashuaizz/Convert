@@ -23,6 +23,8 @@ type GatewayConfig struct {
 type WorkerConfig struct {
 	ServiceName string
 	Env         string
+	Database    DatabaseConfig
+	Queue       QueueConfig
 }
 
 type ProcessorConfig struct {
@@ -51,6 +53,8 @@ type QueueConfig struct {
 	Provider string
 	URL      string
 	Stream   string
+	Subject  string
+	Consumer string
 }
 
 type LimitsConfig struct {
@@ -87,6 +91,8 @@ func LoadGateway() GatewayConfig {
 			Provider: "nats",
 			URL:      "nats://localhost:4222",
 			Stream:   "convert_jobs",
+			Subject:  "jobs.created",
+			Consumer: "convert-worker",
 		},
 		Limits: LimitsConfig{
 			MaxUploadSizeMB: 500,
@@ -104,9 +110,26 @@ func LoadWorker() WorkerConfig {
 	cfg := WorkerConfig{
 		ServiceName: "convert-worker",
 		Env:         "dev",
+		Database: DatabaseConfig{
+			DSN: "postgres://convert:convert@localhost:5432/convert?sslmode=disable",
+		},
+		Queue: QueueConfig{
+			Provider: "nats",
+			URL:      "nats://localhost:4222",
+			Stream:   "convert_jobs",
+			Subject:  "jobs.created",
+			Consumer: "convert-worker",
+		},
 	}
+	loadWorkerYAML(&cfg, env("CONVERT_CONFIG", "configs/gateway.dev.yaml"))
 	cfg.ServiceName = env("CONVERT_SERVICE_NAME", cfg.ServiceName)
 	cfg.Env = env("CONVERT_ENV", cfg.Env)
+	cfg.Database.DSN = env("CONVERT_DATABASE_DSN", cfg.Database.DSN)
+	cfg.Queue.Provider = env("CONVERT_QUEUE_PROVIDER", cfg.Queue.Provider)
+	cfg.Queue.URL = env("CONVERT_QUEUE_URL", cfg.Queue.URL)
+	cfg.Queue.Stream = env("CONVERT_QUEUE_STREAM", cfg.Queue.Stream)
+	cfg.Queue.Subject = env("CONVERT_QUEUE_SUBJECT", cfg.Queue.Subject)
+	cfg.Queue.Consumer = env("CONVERT_QUEUE_CONSUMER", cfg.Queue.Consumer)
 	return cfg
 }
 
@@ -146,6 +169,8 @@ type gatewayYAML struct {
 		Provider string `yaml:"provider"`
 		URL      string `yaml:"url"`
 		Stream   string `yaml:"stream"`
+		Subject  string `yaml:"subject"`
+		Consumer string `yaml:"consumer"`
 	} `yaml:"queue"`
 	Processors map[string]struct {
 		Endpoint string `yaml:"endpoint"`
@@ -220,6 +245,12 @@ func loadGatewayYAML(cfg *GatewayConfig, path string) {
 	if raw.Queue.Stream != "" {
 		cfg.Queue.Stream = raw.Queue.Stream
 	}
+	if raw.Queue.Subject != "" {
+		cfg.Queue.Subject = raw.Queue.Subject
+	}
+	if raw.Queue.Consumer != "" {
+		cfg.Queue.Consumer = raw.Queue.Consumer
+	}
 
 	for name, processor := range raw.Processors {
 		if processor.Endpoint != "" {
@@ -253,6 +284,8 @@ func applyGatewayEnv(cfg *GatewayConfig) {
 	cfg.Queue.Provider = env("CONVERT_QUEUE_PROVIDER", cfg.Queue.Provider)
 	cfg.Queue.URL = env("CONVERT_QUEUE_URL", cfg.Queue.URL)
 	cfg.Queue.Stream = env("CONVERT_QUEUE_STREAM", cfg.Queue.Stream)
+	cfg.Queue.Subject = env("CONVERT_QUEUE_SUBJECT", cfg.Queue.Subject)
+	cfg.Queue.Consumer = env("CONVERT_QUEUE_CONSUMER", cfg.Queue.Consumer)
 
 	cfg.Processors["pdf"] = env("CONVERT_PDF_ENDPOINT", cfg.Processors["pdf"])
 	cfg.Processors["image"] = env("CONVERT_IMAGE_ENDPOINT", cfg.Processors["image"])
@@ -261,6 +294,20 @@ func applyGatewayEnv(cfg *GatewayConfig) {
 	cfg.Limits.MaxUploadSizeMB = envInt("CONVERT_MAX_UPLOAD_SIZE_MB", cfg.Limits.MaxUploadSizeMB)
 	cfg.Limits.SyncTimeout = envDuration("CONVERT_SYNC_TIMEOUT", cfg.Limits.SyncTimeout)
 	cfg.Limits.AsyncJobTimeout = envDuration("CONVERT_ASYNC_JOB_TIMEOUT", cfg.Limits.AsyncJobTimeout)
+}
+
+func loadWorkerYAML(cfg *WorkerConfig, path string) {
+	gateway := GatewayConfig{
+		ServiceName: cfg.ServiceName,
+		Env:         cfg.Env,
+		Database:    cfg.Database,
+		Queue:       cfg.Queue,
+		Processors:  map[string]string{},
+	}
+	loadGatewayYAML(&gateway, path)
+	cfg.Env = gateway.Env
+	cfg.Database = gateway.Database
+	cfg.Queue = gateway.Queue
 }
 
 func parseDuration(value string, fallback time.Duration) time.Duration {
