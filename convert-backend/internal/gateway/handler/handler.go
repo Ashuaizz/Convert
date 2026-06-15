@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -11,11 +12,12 @@ import (
 )
 
 type Handler struct {
-	jobs *service.JobService
+	jobs        *service.JobService
+	healthCheck func(context.Context) error
 }
 
-func NewRouter(jobs *service.JobService) http.Handler {
-	h := &Handler{jobs: jobs}
+func NewRouter(jobs *service.JobService, healthCheck func(context.Context) error) http.Handler {
+	h := &Handler{jobs: jobs, healthCheck: healthCheck}
 
 	r := chi.NewRouter()
 	r.Get("/healthz", h.health)
@@ -31,6 +33,12 @@ func NewRouter(jobs *service.JobService) http.Handler {
 }
 
 func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
+	if h.healthCheck != nil {
+		if err := h.healthCheck(r.Context()); err != nil {
+			writeError(w, r, http.StatusServiceUnavailable, "DEPENDENCY_UNAVAILABLE", err.Error())
+			return
+		}
+	}
 	writeOK(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
@@ -18,13 +19,28 @@ import (
 	"convert-backend/internal/pkg/logger"
 	"convert-backend/internal/pkg/queue"
 	"convert-backend/internal/pkg/storage"
+
+	_ "github.com/lib/pq"
 )
 
 func main() {
 	cfg := config.LoadGateway()
 	logg := logger.New(cfg.ServiceName)
 
-	repo := repository.NewMemoryRepository()
+	db, err := sql.Open("postgres", cfg.Database.DSN)
+	if err != nil {
+		log.Fatalf("database init failed: %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(30 * time.Minute)
+
+	if err := db.PingContext(context.Background()); err != nil {
+		log.Fatalf("database ping failed: %v", err)
+	}
+
+	repo := repository.NewPostgresRepository(db)
 	store, err := storage.NewS3Client(context.Background(), cfg.Storage)
 	if err != nil {
 		log.Fatalf("storage init failed: %v", err)
@@ -33,7 +49,7 @@ func main() {
 	processors := rpcclient.NewRegistry(cfg.Processors)
 	jobService := service.NewJobService(repo, store, publisher, processors)
 
-	router := handler.NewRouter(jobService)
+	router := handler.NewRouter(jobService, db.PingContext)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
