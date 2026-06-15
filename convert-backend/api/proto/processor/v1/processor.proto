@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package processor.v1;
+
+option go_package = "convert-backend/api/proto/processor/v1;processorpb";
+
+import "common/v1/common.proto";
+
+service ProcessorService {
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc Validate(ValidateRequest) returns (ValidateResponse);
+  rpc ProcessSync(ProcessSyncRequest) returns (ProcessSyncResponse);
+  rpc StartJob(StartJobRequest) returns (StartJobResponse);
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string status = 1;
+  string version = 2;
+}
+
+message ValidateRequest {
+  string job_type = 1;
+  repeated common.v1.FileRef inputs = 2;
+  map<string, string> options = 3;
+}
+
+message ValidateResponse {
+  bool ok = 1;
+  repeated string errors = 2;
+}
+
+message ProcessSyncRequest {
+  string request_id = 1;
+  string job_type = 2;
+  repeated common.v1.FileRef inputs = 3;
+  map<string, string> options = 4;
+}
+
+message ProcessSyncResponse {
+  repeated common.v1.FileRef outputs = 1;
+  string message = 2;
+}
+
+message StartJobRequest {
+  string request_id = 1;
+  string job_id = 2;
+  string job_type = 3;
+  repeated common.v1.FileRef inputs = 4;
+  map<string, string> options = 5;
+}
+
+message StartJobResponse {
+  string job_id = 1;
+  string accepted = 2;
+}
+
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobResponse {
+  string status = 1;
+}

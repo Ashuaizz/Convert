@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package pdf.v1;
+
+option go_package = "convert-backend/api/proto/pdf/v1;pdfpb";
+
+message PdfCapability {
+  string name = 1;
+  string description = 2;
+}

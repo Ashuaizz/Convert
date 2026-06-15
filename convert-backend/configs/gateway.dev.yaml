@@ -1,0 +1,32 @@
+server:
+  name: convert-gateway
+  env: dev
+  http_addr: ":8080"
+
+database:
+  dsn: postgres://convert:convert@postgres:5432/convert?sslmode=disable
+
+storage:
+  provider: s3
+  endpoint: http://minio:9000
+  bucket: convert
+  region: us-east-1
+  force_path_style: true
+
+queue:
+  provider: nats
+  url: nats://nats:4222
+  stream: convert_jobs
+
+processors:
+  pdf:
+    endpoint: pdf-service:9001
+  image:
+    endpoint: image-service:9002
+  media:
+    endpoint: media-service:9003
+
+limits:
+  max_upload_size_mb: 500
+  sync_timeout: 20s
+  async_job_timeout: 30m

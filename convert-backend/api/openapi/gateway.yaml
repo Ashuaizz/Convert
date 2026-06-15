@@ -1,0 +1,55 @@
+openapi: 3.0.3
+info:
+  title: Convert Gateway API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+  /api/v1/jobs:
+    post:
+      summary: Create an asynchronous conversion job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobRequest"
+      responses:
+        "202":
+          description: Job accepted
+  /api/v1/jobs/{job_id}:
+    get:
+      summary: Get job status
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job status
+components:
+  schemas:
+    CreateJobRequest:
+      type: object
+      required:
+        - type
+        - input_file_ids
+      properties:
+        type:
+          type: string
+          example: image.resize
+        input_file_ids:
+          type: array
+          items:
+            type: string
+        options:
+          type: object
+          additionalProperties: true

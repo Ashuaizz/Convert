@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "convert-backend/api/proto/common/v1;commonpb";
+
+message FileRef {
+  string file_id = 1;
+  string uri = 2;
+  string content_type = 3;
+  int64 size = 4;
+}
+
+message Error {
+  string code = 1;
+  string message = 2;
+}
