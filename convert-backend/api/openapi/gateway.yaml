@@ -11,6 +11,42 @@ paths:
       responses:
         "200":
           description: OK
+  /api/v1/files/presign:
+    post:
+      summary: Create a presigned object-storage upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PresignUploadRequest"
+      responses:
+        "200":
+          description: Upload URL created
+  /api/v1/files/{file_id}/complete:
+    post:
+      summary: Mark an object-storage upload as complete
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File metadata
+  /api/v1/files/{file_id}/download:
+    get:
+      summary: Create a presigned object-storage download URL
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Download URL created
   /api/v1/jobs:
     post:
       summary: Create an asynchronous conversion job
@@ -37,6 +73,26 @@ paths:
           description: Job status
 components:
   schemas:
+    PresignUploadRequest:
+      type: object
+      required:
+        - filename
+        - content_type
+        - size
+      properties:
+        user_id:
+          type: string
+          description: Temporary user identifier until authentication is wired.
+        filename:
+          type: string
+          example: demo.pdf
+        content_type:
+          type: string
+          example: application/pdf
+        size:
+          type: integer
+          format: int64
+          example: 1048576
     CreateJobRequest:
       type: object
       required:

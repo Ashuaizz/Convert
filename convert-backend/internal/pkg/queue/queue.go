@@ -3,8 +3,9 @@ package queue
 import "context"
 
 type JobMessage struct {
-	JobID string `json:"job_id"`
-	Type  string `json:"type"`
+	JobID        string   `json:"job_id"`
+	Type         string   `json:"type"`
+	InputFileIDs []string `json:"input_file_ids"`
 }
 
 type Publisher interface {

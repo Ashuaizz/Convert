@@ -25,7 +25,10 @@ func main() {
 	logg := logger.New(cfg.ServiceName)
 
 	repo := repository.NewMemoryRepository()
-	store := storage.NewNoopClient()
+	store, err := storage.NewS3Client(context.Background(), cfg.Storage)
+	if err != nil {
+		log.Fatalf("storage init failed: %v", err)
+	}
 	publisher := queue.NewNoopPublisher()
 	processors := rpcclient.NewRegistry(cfg.Processors)
 	jobService := service.NewJobService(repo, store, publisher, processors)

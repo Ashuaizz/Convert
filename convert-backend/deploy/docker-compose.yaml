@@ -8,11 +8,18 @@ services:
       CONVERT_PDF_ENDPOINT: "pdf-service:9001"
       CONVERT_IMAGE_ENDPOINT: "image-service:9002"
       CONVERT_MEDIA_ENDPOINT: "media-service:9003"
+      CONVERT_STORAGE_PROVIDER: "s3"
+      CONVERT_STORAGE_ENDPOINT: "http://minio:9000"
+      CONVERT_STORAGE_BUCKET: "convert"
+      CONVERT_STORAGE_REGION: "us-east-1"
+      CONVERT_STORAGE_ACCESS_KEY_ID: "convert"
+      CONVERT_STORAGE_SECRET_ACCESS_KEY: "convert-secret"
+      CONVERT_STORAGE_FORCE_PATH_STYLE: "true"
     ports:
       - "8080:8080"
     depends_on:
       - postgres
-      - minio
+      - minio-init
       - nats
 
   worker:
@@ -21,7 +28,7 @@ services:
       dockerfile: deploy/dockerfiles/worker.Dockerfile
     depends_on:
       - postgres
-      - minio
+      - minio-init
       - nats
 
   pdf-service:
@@ -63,6 +70,16 @@ services:
     ports:
       - "9000:9000"
       - "19001:9001"
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 convert convert-secret &&
+      mc mb --ignore-existing local/convert
+      "
 
   nats:
     image: nats:2
