@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"path"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +31,70 @@ type Client interface {
 	DownloadExpiry() time.Duration
 	PresignUpload(ctx context.Context, key string, contentType string) (string, error)
 	PresignDownload(ctx context.Context, key string) (string, error)
+}
+
+var unsafeFilenameChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+func SafeFilename(filename string) string {
+	filename = strings.TrimSpace(strings.ReplaceAll(filename, "\\", "/"))
+	if filename == "" {
+		return ""
+	}
+	filename = path.Base(filename)
+	filename = unsafeFilenameChars.ReplaceAllString(filename, "_")
+	filename = strings.Trim(filename, "._-")
+	if filename == "" {
+		return "file"
+	}
+	return filename
+}
+
+func UploadKey(userID string, fileID string, filename string) (string, error) {
+	userID = strings.TrimSpace(userID)
+	fileID = strings.TrimSpace(fileID)
+	filename = SafeFilename(filename)
+	if userID == "" {
+		return "", fmt.Errorf("user id is required")
+	}
+	if fileID == "" {
+		return "", fmt.Errorf("file id is required")
+	}
+	if filename == "" {
+		return "", fmt.Errorf("filename is required")
+	}
+	return strings.Join([]string{"uploads", userID, fileID, filename}, "/"), nil
+}
+
+func ResultKey(userID string, jobID string, filename string) (string, error) {
+	userID = strings.TrimSpace(userID)
+	jobID = strings.TrimSpace(jobID)
+	filename = SafeFilename(filename)
+	if userID == "" {
+		return "", fmt.Errorf("user id is required")
+	}
+	if jobID == "" {
+		return "", fmt.Errorf("job id is required")
+	}
+	if filename == "" {
+		return "", fmt.Errorf("filename is required")
+	}
+	return strings.Join([]string{"results", userID, jobID, filename}, "/"), nil
+}
+
+func TempKey(service string, jobID string, filename string) (string, error) {
+	service = strings.TrimSpace(service)
+	jobID = strings.TrimSpace(jobID)
+	filename = SafeFilename(filename)
+	if service == "" {
+		return "", fmt.Errorf("service is required")
+	}
+	if jobID == "" {
+		return "", fmt.Errorf("job id is required")
+	}
+	if filename == "" {
+		return "", fmt.Errorf("filename is required")
+	}
+	return strings.Join([]string{"temp", service, jobID, filename}, "/"), nil
 }
 
 type S3Client struct {
@@ -93,9 +160,13 @@ func (c *S3Client) DownloadExpiry() time.Duration {
 }
 
 func (c *S3Client) PresignUpload(ctx context.Context, key string, contentType string) (string, error) {
+	key = strings.TrimPrefix(key, "/")
+	if key == "" {
+		return "", fmt.Errorf("storage key is required")
+	}
 	input := &s3.PutObjectInput{
 		Bucket: aws.String(c.bucket),
-		Key:    aws.String(strings.TrimPrefix(key, "/")),
+		Key:    aws.String(key),
 	}
 	if contentType != "" {
 		input.ContentType = aws.String(contentType)
@@ -108,14 +179,22 @@ func (c *S3Client) PresignUpload(ctx context.Context, key string, contentType st
 }
 
 func (c *S3Client) PresignDownload(ctx context.Context, key string) (string, error) {
+	key = strings.TrimPrefix(key, "/")
+	if key == "" {
+		return "", fmt.Errorf("storage key is required")
+	}
 	request, err := c.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(c.bucket),
-		Key:    aws.String(strings.TrimPrefix(key, "/")),
+		Key:    aws.String(key),
 	}, s3.WithPresignExpires(c.downloadExpiry))
 	if err != nil {
 		return "", err
 	}
 	return request.URL, nil
+}
+
+func URI(bucket string, key string) string {
+	return "s3://" + strings.Trim(bucket, "/") + "/" + strings.TrimPrefix(key, "/")
 }
 
 func KeyFromURI(uri string) (string, error) {
@@ -131,4 +210,18 @@ func KeyFromURI(uri string) (string, error) {
 		return "", fmt.Errorf("invalid storage uri")
 	}
 	return key, nil
+}
+
+func FilenameWithSuffix(filename string, suffix string) string {
+	filename = SafeFilename(filename)
+	if suffix == "" {
+		return filename
+	}
+
+	ext := path.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
+	if base == "" {
+		base = "file"
+	}
+	return base + "-" + strconv.FormatInt(time.Now().UTC().UnixNano(), 10) + suffix + ext
 }

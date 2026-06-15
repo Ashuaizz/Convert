@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path"
 	"strings"
 	"time"
 
@@ -80,7 +79,7 @@ func NewJobService(repo repository.Repository, storage storage.Client, queue que
 }
 
 func (s *JobService) PresignUpload(ctx context.Context, req PresignUploadRequest) (PresignUploadResponse, error) {
-	filename := cleanFilename(req.Filename)
+	filename := storage.SafeFilename(req.Filename)
 	if filename == "" {
 		return PresignUploadResponse{}, errors.New("filename is required")
 	}
@@ -98,7 +97,10 @@ func (s *JobService) PresignUpload(ctx context.Context, req PresignUploadRequest
 
 	now := time.Now().UTC()
 	fileID := idgen.New("file")
-	key := fmt.Sprintf("uploads/%s/%s/%s", userID, fileID, filename)
+	key, err := storage.UploadKey(userID, fileID, filename)
+	if err != nil {
+		return PresignUploadResponse{}, err
+	}
 	uploadURL, err := s.storage.PresignUpload(ctx, key, req.ContentType)
 	if err != nil {
 		return PresignUploadResponse{}, err
@@ -241,12 +243,4 @@ func toFileResponse(file repository.File) FileResponse {
 		CreatedAt:   file.CreatedAt,
 		UpdatedAt:   file.UpdatedAt,
 	}
-}
-
-func cleanFilename(filename string) string {
-	filename = strings.TrimSpace(strings.ReplaceAll(filename, "\\", "/"))
-	if filename == "" {
-		return ""
-	}
-	return path.Base(filename)
 }
