@@ -11,14 +11,21 @@ var ErrNotFound = errors.New("resource not found")
 var ErrNotImplemented = errors.New("repository method not implemented")
 
 type Job struct {
-	ID        string
-	UserID    string
-	Type      string
-	Status    string
-	Progress  int
-	Options   map[string]any
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           string
+	UserID       string
+	Type         string
+	Status       string
+	Progress     int
+	Options      map[string]any
+	Message      string
+	ErrorCode    string
+	ErrorMessage string
+	RetryCount   int
+	MaxRetries   int
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	StartedAt    *time.Time
+	FinishedAt   *time.Time
 }
 
 type File struct {
@@ -40,6 +47,9 @@ type Repository interface {
 	CreateJob(ctx context.Context, job Job) error
 	AttachJobFile(ctx context.Context, jobID string, fileID string, role string) error
 	GetJob(ctx context.Context, id string) (Job, error)
+	ClaimJob(ctx context.Context, id string, now time.Time) (Job, bool, error)
+	SucceedJob(ctx context.Context, id string, now time.Time) (Job, error)
+	FailJob(ctx context.Context, id string, code string, message string, now time.Time) (Job, error)
 }
 
 type MemoryRepository struct {
@@ -117,5 +127,54 @@ func (r *MemoryRepository) GetJob(ctx context.Context, id string) (Job, error) {
 	if !ok {
 		return Job{}, ErrNotFound
 	}
+	return job, nil
+}
+
+func (r *MemoryRepository) ClaimJob(ctx context.Context, id string, now time.Time) (Job, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	job, ok := r.jobs[id]
+	if !ok {
+		return Job{}, false, ErrNotFound
+	}
+	if job.Status != "queued" && job.Status != "retrying" {
+		return job, false, nil
+	}
+	job.Status = "running"
+	job.UpdatedAt = now
+	job.StartedAt = &now
+	r.jobs[id] = job
+	return job, true, nil
+}
+
+func (r *MemoryRepository) SucceedJob(ctx context.Context, id string, now time.Time) (Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	job, ok := r.jobs[id]
+	if !ok {
+		return Job{}, ErrNotFound
+	}
+	job.Status = "succeeded"
+	job.Progress = 100
+	job.UpdatedAt = now
+	job.FinishedAt = &now
+	r.jobs[id] = job
+	return job, nil
+}
+
+func (r *MemoryRepository) FailJob(ctx context.Context, id string, code string, message string, now time.Time) (Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	job, ok := r.jobs[id]
+	if !ok {
+		return Job{}, ErrNotFound
+	}
+	job.Status = "failed"
+	job.ErrorCode = code
+	job.ErrorMessage = message
+	job.RetryCount++
+	job.UpdatedAt = now
+	job.FinishedAt = &now
+	r.jobs[id] = job
 	return job, nil
 }
