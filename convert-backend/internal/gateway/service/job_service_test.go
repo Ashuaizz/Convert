@@ -45,6 +45,15 @@ func newTestJobService(maxUploadSizeBytes int64) (*JobService, repository.Reposi
 	return service, repo
 }
 
+type recordingPublisher struct {
+	messages []queue.JobMessage
+}
+
+func (p *recordingPublisher) PublishJob(ctx context.Context, message queue.JobMessage) error {
+	p.messages = append(p.messages, message)
+	return nil
+}
+
 func TestPresignUploadAndCompleteLifecycle(t *testing.T) {
 	t.Parallel()
 
@@ -108,5 +117,54 @@ func TestPresignUploadRejectsUnsupportedContentType(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("PresignUpload() error = nil, want unsupported media type error")
+	}
+}
+
+func TestCreateJobPublishesQueueMessage(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	repo := repository.NewMemoryRepository()
+	publisher := &recordingPublisher{}
+	service := NewJobService(
+		repo,
+		fakeStorage{},
+		publisher,
+		rpcclient.NewRegistry(nil),
+		WithMaxUploadSizeBytes(10<<20),
+	)
+
+	now := time.Now().UTC()
+	file := repository.File{
+		ID:          "file_test",
+		UserID:      "dev-user",
+		Filename:    "demo.jpg",
+		ContentType: "image/jpeg",
+		Size:        100,
+		StorageURI:  "s3://convert/uploads/dev-user/file_test/demo.jpg",
+		Status:      "uploaded",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := repo.CreateFile(ctx, file); err != nil {
+		t.Fatalf("CreateFile() error = %v", err)
+	}
+
+	job, err := service.Create(ctx, CreateJobRequest{
+		Type:         "image.resize",
+		InputFileIDs: []string{file.ID},
+		Options:      map[string]any{"width": 800},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if job.Status != "queued" {
+		t.Fatalf("job status = %q, want queued", job.Status)
+	}
+	if len(publisher.messages) != 1 {
+		t.Fatalf("published messages = %d, want 1", len(publisher.messages))
+	}
+	if publisher.messages[0].JobID != job.ID || publisher.messages[0].Type != "image.resize" {
+		t.Fatalf("published message = %+v, want job %q", publisher.messages[0], job.ID)
 	}
 }

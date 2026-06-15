@@ -45,12 +45,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("storage init failed: %v", err)
 	}
-	publisher := queue.NewNoopPublisher()
+	natsQueue, err := queue.NewNATSClient(context.Background(), cfg.Queue)
+	if err != nil {
+		log.Fatalf("queue init failed: %v", err)
+	}
+	defer natsQueue.Close()
 	processors := rpcclient.NewRegistry(cfg.Processors)
 	jobService := service.NewJobService(
 		repo,
 		store,
-		publisher,
+		natsQueue,
 		processors,
 		service.WithMaxUploadSizeBytes(int64(cfg.Limits.MaxUploadSizeMB)<<20),
 	)
