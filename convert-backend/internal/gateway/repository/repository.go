@@ -8,9 +8,11 @@ import (
 )
 
 var ErrNotFound = errors.New("resource not found")
+var ErrNotImplemented = errors.New("repository method not implemented")
 
 type Job struct {
 	ID        string
+	UserID    string
 	Type      string
 	Status    string
 	Progress  int

@@ -7,6 +7,10 @@ CREATE TABLE users (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+INSERT INTO users (id, email, password_hash, status)
+VALUES ('dev-user', 'dev-user@local', NULL, 'active')
+ON CONFLICT (id) DO NOTHING;
+
 CREATE TABLE files (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id),
@@ -24,7 +28,7 @@ CREATE INDEX idx_files_user_id_created_at ON files(user_id, created_at DESC);
 
 CREATE TABLE jobs (
     id TEXT PRIMARY KEY,
-    user_id TEXT REFERENCES users(id),
+    user_id TEXT NOT NULL REFERENCES users(id),
     type TEXT NOT NULL,
     status TEXT NOT NULL,
     progress INT NOT NULL DEFAULT 0,

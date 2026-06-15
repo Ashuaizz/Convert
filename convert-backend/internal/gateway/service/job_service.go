@@ -93,7 +93,7 @@ func (s *JobService) PresignUpload(ctx context.Context, req PresignUploadRequest
 
 	userID := strings.TrimSpace(req.UserID)
 	if userID == "" {
-		userID = "anonymous"
+		userID = "dev-user"
 	}
 
 	now := time.Now().UTC()
@@ -111,7 +111,7 @@ func (s *JobService) PresignUpload(ctx context.Context, req PresignUploadRequest
 		ContentType: req.ContentType,
 		Size:        req.Size,
 		StorageURI:  s.storage.URI(key),
-		Status:      "pending",
+		Status:      "pending_upload",
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -165,6 +165,7 @@ func (s *JobService) Create(ctx context.Context, req CreateJobRequest) (JobRespo
 	if len(req.InputFileIDs) == 0 {
 		return JobResponse{}, errors.New("at least one input file is required")
 	}
+	userID := ""
 	for _, fileID := range req.InputFileIDs {
 		file, err := s.repo.GetFile(ctx, strings.TrimSpace(fileID))
 		if err != nil {
@@ -173,11 +174,18 @@ func (s *JobService) Create(ctx context.Context, req CreateJobRequest) (JobRespo
 		if file.Status != "uploaded" {
 			return JobResponse{}, fmt.Errorf("input file %q is not uploaded", fileID)
 		}
+		if userID == "" {
+			userID = file.UserID
+		}
+	}
+	if userID == "" {
+		userID = "dev-user"
 	}
 
 	now := time.Now().UTC()
 	job := repository.Job{
 		ID:        idgen.New("job"),
+		UserID:    userID,
 		Type:      req.Type,
 		Status:    "queued",
 		Progress:  0,

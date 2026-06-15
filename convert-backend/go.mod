@@ -10,6 +10,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.24
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.103.3
 	github.com/go-chi/chi/v5 v5.3.0
+	github.com/lib/pq v1.10.9
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -27,5 +29,4 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.43.3 // indirect
 	github.com/aws/smithy-go v1.27.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1
 )
