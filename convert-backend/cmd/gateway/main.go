@@ -47,7 +47,13 @@ func main() {
 	}
 	publisher := queue.NewNoopPublisher()
 	processors := rpcclient.NewRegistry(cfg.Processors)
-	jobService := service.NewJobService(repo, store, publisher, processors)
+	jobService := service.NewJobService(
+		repo,
+		store,
+		publisher,
+		processors,
+		service.WithMaxUploadSizeBytes(int64(cfg.Limits.MaxUploadSizeMB)<<20),
+	)
 
 	router := handler.NewRouter(jobService, db.PingContext)
 

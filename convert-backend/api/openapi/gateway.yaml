@@ -35,6 +35,20 @@ paths:
       responses:
         "200":
           description: File metadata
+  /api/v1/files/{file_id}:
+    get:
+      summary: Get file metadata
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File metadata
+        "404":
+          description: File not found
   /api/v1/files/{file_id}/download:
     get:
       summary: Create a presigned object-storage download URL

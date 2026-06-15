@@ -9,10 +9,13 @@ import (
 
 	"convert-backend/internal/gateway/repository"
 	"convert-backend/internal/gateway/rpcclient"
+	apperrors "convert-backend/internal/pkg/errors"
 	"convert-backend/internal/pkg/idgen"
 	"convert-backend/internal/pkg/queue"
 	"convert-backend/internal/pkg/storage"
 )
+
+const defaultMaxUploadSizeBytes = 500 << 20
 
 type CreateJobRequest struct {
 	Type         string         `json:"type"`
@@ -63,19 +66,35 @@ type JobResponse struct {
 }
 
 type JobService struct {
-	repo       repository.Repository
-	storage    storage.Client
-	queue      queue.Publisher
-	processors *rpcclient.Registry
+	repo               repository.Repository
+	storage            storage.Client
+	queue              queue.Publisher
+	processors         *rpcclient.Registry
+	maxUploadSizeBytes int64
 }
 
-func NewJobService(repo repository.Repository, storage storage.Client, queue queue.Publisher, processors *rpcclient.Registry) *JobService {
-	return &JobService{
-		repo:       repo,
-		storage:    storage,
-		queue:      queue,
-		processors: processors,
+type ServiceOption func(*JobService)
+
+func WithMaxUploadSizeBytes(size int64) ServiceOption {
+	return func(s *JobService) {
+		if size > 0 {
+			s.maxUploadSizeBytes = size
+		}
 	}
+}
+
+func NewJobService(repo repository.Repository, storage storage.Client, queue queue.Publisher, processors *rpcclient.Registry, options ...ServiceOption) *JobService {
+	service := &JobService{
+		repo:               repo,
+		storage:            storage,
+		queue:              queue,
+		processors:         processors,
+		maxUploadSizeBytes: defaultMaxUploadSizeBytes,
+	}
+	for _, option := range options {
+		option(service)
+	}
+	return service
 }
 
 func (s *JobService) PresignUpload(ctx context.Context, req PresignUploadRequest) (PresignUploadResponse, error) {
@@ -88,6 +107,12 @@ func (s *JobService) PresignUpload(ctx context.Context, req PresignUploadRequest
 	}
 	if req.Size <= 0 {
 		return PresignUploadResponse{}, errors.New("size must be greater than zero")
+	}
+	if req.Size > s.maxUploadSizeBytes {
+		return PresignUploadResponse{}, apperrors.New(apperrors.CodePayloadTooLarge, "file size exceeds upload limit")
+	}
+	if !isAllowedContentType(req.ContentType) {
+		return PresignUploadResponse{}, apperrors.New(apperrors.CodeUnsupportedMediaType, "content_type is not supported")
 	}
 
 	userID := strings.TrimSpace(req.UserID)
@@ -131,6 +156,14 @@ func (s *JobService) PresignUpload(ctx context.Context, req PresignUploadRequest
 
 func (s *JobService) CompleteUpload(ctx context.Context, fileID string) (FileResponse, error) {
 	file, err := s.repo.UpdateFileStatus(ctx, fileID, "uploaded", time.Now().UTC())
+	if err != nil {
+		return FileResponse{}, err
+	}
+	return toFileResponse(file), nil
+}
+
+func (s *JobService) GetFile(ctx context.Context, fileID string) (FileResponse, error) {
+	file, err := s.repo.GetFile(ctx, strings.TrimSpace(fileID))
 	if err != nil {
 		return FileResponse{}, err
 	}
@@ -243,4 +276,17 @@ func toFileResponse(file repository.File) FileResponse {
 		CreatedAt:   file.CreatedAt,
 		UpdatedAt:   file.UpdatedAt,
 	}
+}
+
+func isAllowedContentType(contentType string) bool {
+	contentType = strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	if contentType == "application/pdf" {
+		return true
+	}
+	for _, prefix := range []string{"image/", "audio/", "video/"} {
+		if strings.HasPrefix(contentType, prefix) {
+			return true
+		}
+	}
+	return false
 }

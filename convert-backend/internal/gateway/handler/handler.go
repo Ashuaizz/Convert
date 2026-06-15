@@ -3,10 +3,13 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"convert-backend/internal/gateway/middleware"
+	"convert-backend/internal/gateway/repository"
 	"convert-backend/internal/gateway/service"
+	apperrors "convert-backend/internal/pkg/errors"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -23,6 +26,7 @@ func NewRouter(jobs *service.JobService, healthCheck func(context.Context) error
 	r.Get("/healthz", h.health)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/files/presign", h.presignUpload)
+		r.Get("/files/{file_id}", h.getFile)
 		r.Post("/files/{file_id}/complete", h.completeUpload)
 		r.Get("/files/{file_id}/download", h.presignDownload)
 		r.Post("/jobs", h.createJob)
@@ -53,10 +57,25 @@ func (h *Handler) presignUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.jobs.PresignUpload(r.Context(), req)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", err.Error())
+		writeServiceError(w, r, err)
 		return
 	}
 	writeOK(w, r, http.StatusOK, result)
+}
+
+func (h *Handler) getFile(w http.ResponseWriter, r *http.Request) {
+	fileID := chi.URLParam(r, "file_id")
+	if fileID == "" {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "missing file id")
+		return
+	}
+
+	file, err := h.jobs.GetFile(r.Context(), fileID)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	writeOK(w, r, http.StatusOK, file)
 }
 
 func (h *Handler) completeUpload(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +87,7 @@ func (h *Handler) completeUpload(w http.ResponseWriter, r *http.Request) {
 
 	file, err := h.jobs.CompleteUpload(r.Context(), fileID)
 	if err != nil {
-		writeError(w, r, http.StatusNotFound, "NOT_FOUND", err.Error())
+		writeServiceError(w, r, err)
 		return
 	}
 	writeOK(w, r, http.StatusOK, file)
@@ -83,7 +102,7 @@ func (h *Handler) presignDownload(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.jobs.PresignDownload(r.Context(), fileID)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", err.Error())
+		writeServiceError(w, r, err)
 		return
 	}
 	writeOK(w, r, http.StatusOK, result)
@@ -97,7 +116,7 @@ func (h *Handler) createJob(w http.ResponseWriter, r *http.Request) {
 	}
 	job, err := h.jobs.Create(r.Context(), req)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", err.Error())
+		writeServiceError(w, r, err)
 		return
 	}
 	writeOK(w, r, http.StatusAccepted, job)
@@ -111,7 +130,7 @@ func (h *Handler) getJob(w http.ResponseWriter, r *http.Request) {
 	}
 	job, err := h.jobs.Get(r.Context(), jobID)
 	if err != nil {
-		writeError(w, r, http.StatusNotFound, "NOT_FOUND", err.Error())
+		writeServiceError(w, r, err)
 		return
 	}
 	writeOK(w, r, http.StatusOK, job)
@@ -139,6 +158,36 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, code, messag
 		Code:      code,
 		Message:   message,
 	})
+}
+
+func writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
+	var appErr apperrors.AppError
+	if errors.As(err, &appErr) {
+		writeError(w, r, statusForCode(appErr.Code), string(appErr.Code), appErr.Message)
+		return
+	}
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, r, http.StatusNotFound, string(apperrors.CodeNotFound), err.Error())
+		return
+	}
+	writeError(w, r, http.StatusBadRequest, string(apperrors.CodeInvalidArgument), err.Error())
+}
+
+func statusForCode(code apperrors.Code) int {
+	switch code {
+	case apperrors.CodePayloadTooLarge:
+		return http.StatusRequestEntityTooLarge
+	case apperrors.CodeUnsupportedMediaType:
+		return http.StatusUnsupportedMediaType
+	case apperrors.CodeNotFound:
+		return http.StatusNotFound
+	case apperrors.CodeForbidden:
+		return http.StatusForbidden
+	case apperrors.CodeUnauthorized:
+		return http.StatusUnauthorized
+	default:
+		return http.StatusBadRequest
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload envelope) {
